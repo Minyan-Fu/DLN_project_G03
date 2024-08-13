@@ -23,6 +23,7 @@ from datasets import (
 from evaluation import model_eval_multitask, test_model_multitask
 from optimizer import AdamW
 
+
 TQDM_DISABLE = True
 
 
@@ -370,10 +371,36 @@ def train_multitask(args):
 
                 optimizer.zero_grad()
                 logits = model.predict_similarity(b_ids_1,  b_mask_1, b_ids_2, b_mask_2)
-                loss = F.mse_loss(logits.to(torch.float32), b_labels.view(-1).to(torch.float32))
-                # l1_loss is better here as we may have extreme value in dataset
-                # loss = F.l1_loss(logits.to(torch.float32), b_labels.view(-1).to(torch.float32))
-                loss.backward()
+
+                # # task1_version
+                # loss = F.mse_loss(logits.to(torch.float32), b_labels.view(-1).to(torch.float32))
+                # # l1_loss is better here as we may have extreme value in dataset
+                # # loss = F.l1_loss(logits.to(torch.float32), b_labels.view(-1).to(torch.float32))
+                # loss.backward()
+                # # task1_version
+                
+                #MNRL_LOSS
+                # Use b_labels as positive scores and treat other samples in the batch as negatives
+                # Assuming logits are similarity scores between pairs
+                positive_scores = logits.diag()  # Positive pairs (diagonal)
+                all_scores = logits  # All pairwise scores in the batch
+
+                # Calculate MNRL loss
+                # Here we assume logits is a matrix of similarity scores
+                # Positive scores are on the diagonal of this matrix
+                margin = 1.0  # Example margin for contrastive loss
+                mnrl_loss = 0
+                for i in range(len(positive_scores)):
+                    positive_score = positive_scores[i]
+                    negative_scores = torch.cat((all_scores[i, :i], all_scores[i, i+1:]))
+                    losses = F.relu(margin - positive_score + negative_scores)
+                    mnrl_loss += losses.mean()
+
+                mnrl_loss /= len(positive_scores)
+
+                mnrl_loss.backward()
+                #MNRL_LOSS
+
                 optimizer.step()
 
                 train_loss += loss.item()
