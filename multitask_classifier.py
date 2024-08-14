@@ -22,6 +22,7 @@ from datasets import (
 )
 from evaluation import model_eval_multitask, test_model_multitask
 from optimizer import AdamW
+from torch.nn import CosineEmbeddingLoss
 
 
 TQDM_DISABLE = True
@@ -187,6 +188,18 @@ def save_model(model, optimizer, args, config, filepath):
 
     torch.save(save_info, filepath)
     print(f"Saving the model to {filepath}.")
+
+#MNRL_loss
+def mnrl_loss(outputs, targets, margin=0.4):
+    num_classes = outputs.size(1)
+    one_hot = torch.eye(num_classes)[targets].to(outputs.device)
+    correct_class_scores = (outputs * one_hot).sum(dim=1)
+
+    margin_loss = F.relu(outputs - correct_class_scores.unsqueeze(1) + margin)
+    margin_loss = margin_loss * (1 - one_hot)
+
+    return margin_loss.sum(dim=1).mean()
+#MNRL_loss
 
 
 # TODO Currently only trains on SST dataset!
@@ -373,38 +386,51 @@ def train_multitask(args):
                 logits = model.predict_similarity(b_ids_1,  b_mask_1, b_ids_2, b_mask_2)
 
                 # # task1_version
-                # loss = F.mse_loss(logits.to(torch.float32), b_labels.view(-1).to(torch.float32))
+                # mse_loss = F.mse_loss(logits.to(torch.float32), b_labels.view(-1).to(torch.float32))
+                # optimizer.step()
+                # train_loss += mse_loss.item()
+                # num_batches += 1
+
                 # # l1_loss is better here as we may have extreme value in dataset
-                # # loss = F.l1_loss(logits.to(torch.float32), b_labels.view(-1).to(torch.float32))
+                # # l1_loss = F.l1_loss(logits.to(torch.float32), b_labels.view(-1).to(torch.float32))
                 # loss.backward()
+                # optimizer.step()
+                # train_loss += l1_loss.item()
+                # num_batches += 1
                 # # task1_version
                 
-                #MNRL_LOSS
-                # Use b_labels as positive scores and treat other samples in the batch as negatives
-                # Assuming logits are similarity scores between pairs
-                positive_scores = logits.diag()  # Positive pairs (diagonal)
-                all_scores = logits  # All pairwise scores in the batch
+                # #MNRL_LOSS
+                # # Use b_labels as positive scores and treat other samples in the batch as negatives
+                # # Assuming logits are similarity scores between pairs
+                # positive_scores = logits.diag()  # Positive pairs (diagonal)
+                # all_scores = logits  # All pairwise scores in the batch
 
-                # Calculate MNRL loss
-                # Here we assume logits is a matrix of similarity scores
-                # Positive scores are on the diagonal of this matrix
-                margin = 1.0  # Example margin for contrastive loss
-                mnrl_loss = 0
-                for i in range(len(positive_scores)):
-                    positive_score = positive_scores[i]
-                    negative_scores = torch.cat((all_scores[i, :i], all_scores[i, i+1:]))
-                    losses = F.relu(margin - positive_score + negative_scores)
-                    mnrl_loss += losses.mean()
+                # # Calculate MNRL loss
+                # # Here we assume logits is a matrix of similarity scores
+                # # Positive scores are on the diagonal of this matrix
+                # margin = 1.0  # Example margin for contrastive loss
+                # mnrl_loss = 0
+                # for i in range(len(positive_scores)):
+                #     positive_score = positive_scores[i]
+                #     negative_scores = torch.cat((all_scores[i, :i], all_scores[i, i+1:]))
+                #     losses = F.relu(margin - positive_score + negative_scores)
+                #     mnrl_loss += losses.mean()
 
-                mnrl_loss /= len(positive_scores)
+                # mnrl_loss /= len(positive_scores)
 
-                mnrl_loss.backward()
-                #MNRL_LOSS
+                # mnrl_loss.backward()
+                # optimizer.step()
+                # train_loss += mnrl_loss.item()
+                # num_batches += 1
+                # #MNRL_LOSS
 
+                #Cosine_loss
+                cos_loss = 1 - F.cosine_similarity(logits.to(torch.float32), b_labels.view(-1).to(torch.float32)).mean()
+                cos_loss.backward
                 optimizer.step()
-
-                train_loss += loss.item()
+                train_loss += cos_loss.item()
                 num_batches += 1
+                #Cosine_loss
             # raise NotImplementedError
 
         if args.task == "qqp" or args.task == "multitask":
