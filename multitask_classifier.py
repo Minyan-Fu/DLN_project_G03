@@ -84,6 +84,10 @@ class MultitaskBERT(nn.Module):
         output = self.bert(input_ids, attention_mask=attention_mask)
         return output['last_hidden_state'][:,0,:]
         # raise NotImplementedError
+    
+    # when use SimCSE
+    # def forward(self, input_ids, attention_mask):
+    #     return self.simcse_embeddings(input_ids, attention_mask)
 
     def predict_sentiment(self, input_ids, attention_mask):
         """
@@ -200,6 +204,18 @@ def mnrl_loss(outputs, targets, margin=0.4):
 
     return margin_loss.sum(dim=1).mean()
 #MNRL_loss
+
+#SimCSE
+def simcse_embeddings(self, input_ids, attention_mask):
+    # 获取 BERT 的输出
+    outputs = self.bert(input_ids, attention_mask=attention_mask)
+    embeddings = outputs.last_hidden_state[:, 0, :]  # 使用 [CLS] token 的嵌入
+    
+    # 添加噪声或 dropout 实现对比学习
+    embeddings = F.dropout(embeddings, p=0.1, training=self.training)
+    
+    return embeddings
+#SimCSE
 
 
 # TODO Currently only trains on SST dataset!
@@ -425,8 +441,9 @@ def train_multitask(args):
                 # #MNRL_LOSS
 
                 #Cosine_loss
-                cos_loss = 1 - F.cosine_similarity(logits.to(torch.float32), b_labels.view(-1).to(torch.float32)).mean()
-                cos_loss.backward
+                cos_loss = 1 - F.cosine_similarity(logits.to(torch.float32), b_labels.view(-1).to(torch.float32),dim=0)
+                cos_loss.mean()
+                cos_loss.backward()
                 optimizer.step()
                 train_loss += cos_loss.item()
                 num_batches += 1
